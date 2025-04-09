@@ -1,0 +1,112 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.19;
+
+import {DeployOurToken} from "../script/DeployOurToken.s.sol";
+import {OurToken} from "../src/OurToken.sol";
+import {Test, console} from "forge-std/Test.sol";
+import {StdCheats} from "forge-std/StdCheats.sol";
+
+interface MintableToken {
+    function mint(address, uint256) external;
+}
+
+contract OurTokenTest is StdCheats, Test {
+    OurToken public ourToken;
+    DeployOurToken public deployer;
+
+    address alice = makeAddr("alice");
+    address bob = makeAddr("bob");
+
+    uint256 public constant SEND_AMOUNT = 10 ether;
+    uint256 public constant STARTING_BALANCE = 100 ether;
+
+    function setUp() public {
+        deployer = new DeployOurToken();
+        ourToken = deployer.run();
+
+        // Transfer some tokens to Alice for testing
+        vm.prank(deployer.owner()); // msg.sender of deployer
+        ourToken.transfer(alice, STARTING_BALANCE);
+    }
+
+    // Test: Initial supply check
+    function testInitialSupply() public {
+        assertEq(ourToken.totalSupply(), deployer.INITIAL_SUPPLY());
+    }
+
+    // Test: Only owner can mint
+    function testUsersCantMint() public {
+        vm.expectRevert();
+        MintableToken(address(ourToken)).mint(address(this), 1);
+    }
+
+    // Test: Transfers between accounts
+    function testTransferTokens() public {
+        vm.prank(alice);
+        ourToken.transfer(bob, SEND_AMOUNT);
+        assertEq(ourToken.balanceOf(bob), SEND_AMOUNT);
+        assertEq(ourToken.balanceOf(alice), STARTING_BALANCE - SEND_AMOUNT);
+    }
+
+    // Test: Transfer fails if insufficient balance
+    function testTransferFailsIfNotEnoughBalance() public {
+        vm.prank(bob);
+        vm.expectRevert();
+        ourToken.transfer(alice, SEND_AMOUNT); // bob has 0 tokens
+    }
+
+    // Test: Approve and allowance check
+    function testApproveAndAllowance() public {
+        vm.prank(alice);
+        ourToken.approve(bob, SEND_AMOUNT);
+        assertEq(ourToken.allowance(alice, bob), SEND_AMOUNT);
+    }
+
+    // Test: TransferFrom by spender
+    function testTransferFrom() public {
+        // Alice approves Bob
+        vm.prank(alice);
+        ourToken.approve(bob, SEND_AMOUNT);
+
+        // Bob spends allowance
+        vm.prank(bob);
+        ourToken.transferFrom(alice, bob, SEND_AMOUNT);
+
+        assertEq(ourToken.balanceOf(bob), SEND_AMOUNT);
+        assertEq(ourToken.allowance(alice, bob), 0); // allowance should be reduced
+    }
+
+    // Test: TransferFrom fails if allowance not enough
+    function testTransferFromFailsIfNoAllowance() public {
+        vm.prank(bob);
+        vm.expectRevert();
+        ourToken.transferFrom(alice, bob, SEND_AMOUNT);
+    }
+
+    // Test: Approve, increase and decrease allowance
+    function testIncreaseDecreaseAllowance() public {
+        vm.prank(alice);
+        ourToken.approve(bob, SEND_AMOUNT);
+
+        // Increase allowance
+        vm.prank(alice);
+        ourToken.increaseAllowance(bob, SEND_AMOUNT);
+        assertEq(ourToken.allowance(alice, bob), SEND_AMOUNT * 2);
+
+        // Decrease allowance
+        vm.prank(alice);
+        ourToken.decreaseAllowance(bob, SEND_AMOUNT);
+        assertEq(ourToken.allowance(alice, bob), SEND_AMOUNT);
+    }
+
+    // Test: Transfer event emitted
+    function testTransferEmitsEvent() public {
+        vm.prank(alice);
+        vm.expectEmit(true, true, false, true);
+        emit Transfer(alice, bob, SEND_AMOUNT);
+        ourToken.transfer(bob, SEND_AMOUNT);
+    }
+
+    // Required for event testing
+    event Transfer(address indexed from, address indexed to, uint256 value);
+}

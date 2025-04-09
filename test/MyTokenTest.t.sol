@@ -5,8 +5,13 @@ pragma solidity ^0.8.19;
 import {Test} from "forge-std/Test.sol";
 import {DeployMyToken} from "../script/DeployMyToken.s.sol";
 import {MyToken} from "../src/MyToken.sol";
+import {StdCheats} from "forge-std/StdCheats.sol";
 
-contract MyTokenTest is Test {
+interface MintableToken {
+    function mint(address, uint256) external;
+}
+
+contract MyTokenTest is StdCheats, Test {
     MyToken public myToken;
     DeployMyToken public deployer;
 
@@ -40,5 +45,11 @@ contract MyTokenTest is Test {
 
         assertEq(myToken.balanceOf(alice), transferAmount);
         assertEq(myToken.balanceOf(bob), STARTING_BALANCE - transferAmount);
+    }
+
+    // Test: Only owner can mint
+    function testUsersCantMint() public {
+        vm.expectRevert();
+        MintableToken(address(myToken)).mint(address(bob), 1);
     }
 }
